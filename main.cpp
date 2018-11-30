@@ -95,26 +95,16 @@ static double compute_mean(InputIter begin, InputIter end)
     return mean;
 }
 
-template<class InputIter>
-static double compute_variance(InputIter begin, InputIter end)
-{
-    double mean = compute_mean(begin, end);
-
-    double variance = 0;
-    for (auto i = begin; i != end; ++i)
-    {
-        variance += (*i - mean) * (*i - mean);
-    }
-    variance /= std::distance(begin, end);
-
-    return variance;
-}
-
 int main(int argc, char* argv[])
 {
-    // Create a simple uniform [-1, 1] RNG with a varying seed and double precision
+    // Create a seed for the RNG
+    auto seed = static_cast<unsigned long>(time(nullptr));
+
+    std::cout << "seed = " << seed << "\n";
+
+    // Create a simple uniform [-1, 1] RNG with double precision
     std::uniform_real_distribution rng {-1.0, 1.0 + std::numeric_limits<double>::epsilon()};
-    std::minstd_rand0 random {static_cast<unsigned long>(time(nullptr))};
+    std::minstd_rand0 random {};
 
     // An algorithm to generate a point
     // The point is of the form (h, h^2) where h an instance of random variable x
@@ -232,26 +222,7 @@ int main(int argc, char* argv[])
     std::vector<Point> pts {};
     for (int i = 0; i < NUM_TEST_POINTS; ++i)
     {
-        auto pt = gen_point();
-
-        /*
-        // Plug point's x-coordinate into all hypotheses
-        std::vector<double> c {};
-        for (auto&& g : h)
-        {
-            c.push_back(g.slope * pt.h + g.yint);
-        }
-
-        // Find mean of computed results
-        auto mean = compute_mean(c.begin(), c.end());
-
-        // Find variance of computed results
-        auto var = compute_variance(c.begin(), c.end());
-        */
-
-//      std::cout << "(" << pt.h << ", " << pt.v << ") -> bias = " << bias << ", var = " << var << "\n";
-
-        pts.push_back(pt);
+        pts.push_back(gen_point());
     }
 
     std::cout << "Generated " << pts.size() << " test point(s)\n";
@@ -276,6 +247,9 @@ int main(int argc, char* argv[])
     // This is the expected value over all test points
     std::cout << "bias = " << compute_mean(bias_mse_terms.begin(), bias_mse_terms.end()) << "\n";
 
+    // MSE terms for calculating var
+    std::vector<double> var_mse_terms {};
+
     // MSE terms for eventual calculation of E[E_out]
     std::vector<double> E_E_out_mse_terms {};
 
@@ -283,10 +257,14 @@ int main(int argc, char* argv[])
     // This is also, by extension, a loop over the generated data sets
     for (auto&& g : h)
     {
-        // SSE terms
+        // SSE terms for var(x)
         // This is just an intermediate container for processing
         // This doesn't correspond to anything in my printed explanation
-        std::vector<double> sse_terms {};
+        std::vector<double> var_sse_terms {};
+
+        // SSE terms for E_out
+        // Again, this doesn't map to my explanation
+        std::vector<double> E_out_sse_terms {};
 
         // For each test point
         for (auto&& pt : pts)
@@ -297,14 +275,24 @@ int main(int argc, char* argv[])
             // The expected
             auto yhat = std::pow(pt.h, 2);
 
-            // The SSE term
-            sse_terms.push_back(std::pow(y - yhat, 2));
+            // The var(x) SSE term
+            var_sse_terms.push_back(std::pow(g.slope * pt.h + g.yint - gbar.slope * pt.h - gbar.yint, 2));
+
+            // The E_out SSE term
+            E_out_sse_terms.push_back(std::pow(y - yhat, 2));
         }
 
-        // Compute MSE for test point against all generated hypothesis
+        // Compute MSE for the test points' var(x)
+        var_mse_terms.push_back(compute_mean(var_sse_terms.begin(), var_sse_terms.end()));
+
+        // Compute MSE for test points' E_out against all generated hypotheses
         // This is E_out for this particular data set D
-        E_E_out_mse_terms.push_back(compute_mean(sse_terms.begin(), sse_terms.end()));
+        E_E_out_mse_terms.push_back(compute_mean(E_out_sse_terms.begin(), E_out_sse_terms.end()));
     }
+
+    // Compute and print var
+    // This is the expected value over all hypotheses
+    std::cout << "var = " << compute_mean(var_mse_terms.begin(), var_mse_terms.end()) << "\n";
 
     // Compute and print E[E_out]
     // This is the expected value over all hypotheses
