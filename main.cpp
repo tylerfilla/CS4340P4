@@ -5,7 +5,9 @@
  */
 
 #include <cmath>
+#include <ctime>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <random>
 #include <vector>
@@ -15,6 +17,16 @@
 #include "matplotlibcpp.h"
 
 namespace plt = matplotlibcpp;
+
+/**
+ * The number of data sets, and also hypotheses, to generate.
+ */
+constexpr static int NUM_DATA_SETS = 100;
+
+/**
+ * The number of test points to use after generating hypotheses.
+ */
+constexpr static int NUM_TEST_POINTS = 100;
 
 /**
  * A single data point.
@@ -70,11 +82,39 @@ static Line compute_line(Point a, Point b)
     return {slope, yint};
 }
 
+template<class InputIter>
+static double compute_mean(InputIter begin, InputIter end)
+{
+    double mean = 0;
+    for (auto i = begin; i != end; ++i)
+    {
+        mean += *i;
+    }
+    mean /= std::distance(begin, end);
+
+    return mean;
+}
+
+template<class InputIter>
+static double compute_variance(InputIter begin, InputIter end)
+{
+    double mean = compute_mean(begin, end);
+
+    double variance = 0;
+    for (auto i = begin; i != end; ++i)
+    {
+        variance += (*i - mean) * (*i - mean);
+    }
+    variance /= std::distance(begin, end);
+
+    return variance;
+}
+
 int main(int argc, char* argv[])
 {
-    // Create a simple uniform [-1, 1] RNG with a fixed seed and double precision
+    // Create a simple uniform [-1, 1] RNG with a varying seed and double precision
     std::uniform_real_distribution rng {-1.0, 1.0 + std::numeric_limits<double>::epsilon()};
-    std::minstd_rand0 random {123};
+    std::minstd_rand0 random {static_cast<unsigned long>(time(nullptr))};
 
     // An algorithm to generate a point
     // The point is of the form (h, h^2) where h an instance of random variable x
@@ -85,6 +125,12 @@ int main(int argc, char* argv[])
 
         return {h, v};
     };
+
+    //
+    // TRAINING SECTION
+    //
+
+    std::cout << "Begin training\n";
 
     // An algorithm to generate a data set D
     // The set is of the form {x_1, x_2} where x_i is a point generated above
@@ -104,9 +150,9 @@ int main(int argc, char* argv[])
     // This is the "average hypothesis" that may not actually be in H
     Line gbar {};
 
-    // Generate five hundred data sets
+    // Generate data sets
     // For each data set, make a hypothesis
-    for (int i = 0; i < 500; ++i)
+    for (int i = 0; i < NUM_DATA_SETS; ++i)
     {
         // Generate data set
         auto D = gen_D();
@@ -170,9 +216,77 @@ int main(int argc, char* argv[])
     auto gbary2 = gbar.slope * gbarx2 + gbar.yint;
     plt::named_plot("gbar(x)", std::vector {gbarx1, gbarx2}, std::vector {gbary1, gbary2}, "blue");
 
-    // Show the plot
+    std::cout << "Close the plot to continue the program\n";
+
+    // Show the plot of f(x) and gbar(x)
     plt::legend();
     plt::show();
 
+    //
+    // TESTING
+    //
+
+    std::cout << "Begin testing\n";
+
+    // Generate test points
+    std::vector<Point> pts {};
+    for (int i = 0; i < NUM_TEST_POINTS; ++i)
+    {
+        auto pt = gen_point();
+
+        /*
+        // Plug point's x-coordinate into all hypotheses
+        std::vector<double> c {};
+        for (auto&& g : h)
+        {
+            c.push_back(g.slope * pt.h + g.yint);
+        }
+
+        // Find mean of computed results
+        auto mean = compute_mean(c.begin(), c.end());
+
+        // Find variance of computed results
+        auto var = compute_variance(c.begin(), c.end());
+        */
+
+//      std::cout << "(" << pt.h << ", " << pt.v << ") -> bias = " << bias << ", var = " << var << "\n";
+
+        pts.push_back(pt);
+    }
+
+    std::cout << "Generated " << pts.size() << " test point(s)\n";
+
+    // MSE terms for eventual calculation of E[E_out]
+    std::vector<double> mse_terms {};
+
+    // For each generated hypothesis
+    // This is also, by extension, a loop over the generated data sets
+    for (auto&& g : h)
+    {
+        // SSE terms
+        std::vector<double> sse_terms {};
+
+        // For each test point
+        for (auto&& pt : pts)
+        {
+            // The empirical
+            auto y = g.slope * pt.h + g.yint;
+
+            // The expected
+            auto yhat = std::pow(pt.h, 2);
+
+            // The SSE term
+            sse_terms.push_back(std::pow(y - yhat, 2));
+        }
+
+        // Compute MSE for test point against all generated hypothesis
+        // This is E_out for this particular data set D
+        mse_terms.push_back(compute_mean(sse_terms.begin(), sse_terms.end()));
+    }
+
+    // Compute and print E[E_out]
+    std::cout << "E[E_out] = " << compute_mean(mse_terms.begin(), mse_terms.end()) << "\n";
+
     return 0;
 }
+
