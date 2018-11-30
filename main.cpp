@@ -256,20 +256,42 @@ int main(int argc, char* argv[])
 
     std::cout << "Generated " << pts.size() << " test point(s)\n";
 
+    // MSE terms for calculation of bias
+    std::vector<double> bias_mse_terms {};
+
+    // For each test point
+    for (auto&& pt : pts)
+    {
+        // The empirical (against g-bar)
+        auto y = gbar.slope * pt.h + gbar.yint;
+
+        // The expected
+        auto yhat = std::pow(pt.h, 2);
+
+        // Compute SSE term
+        bias_mse_terms.push_back(std::pow(y - yhat, 2));
+    }
+
+    // Compute and print bias
+    // This is the expected value over all test points
+    std::cout << "bias = " << compute_mean(bias_mse_terms.begin(), bias_mse_terms.end()) << "\n";
+
     // MSE terms for eventual calculation of E[E_out]
-    std::vector<double> mse_terms {};
+    std::vector<double> E_E_out_mse_terms {};
 
     // For each generated hypothesis
     // This is also, by extension, a loop over the generated data sets
     for (auto&& g : h)
     {
         // SSE terms
+        // This is just an intermediate container for processing
+        // This doesn't correspond to anything in my printed explanation
         std::vector<double> sse_terms {};
 
         // For each test point
         for (auto&& pt : pts)
         {
-            // The empirical
+            // The empirical (against the current hypothesis g)
             auto y = g.slope * pt.h + g.yint;
 
             // The expected
@@ -281,12 +303,12 @@ int main(int argc, char* argv[])
 
         // Compute MSE for test point against all generated hypothesis
         // This is E_out for this particular data set D
-        mse_terms.push_back(compute_mean(sse_terms.begin(), sse_terms.end()));
+        E_E_out_mse_terms.push_back(compute_mean(sse_terms.begin(), sse_terms.end()));
     }
 
     // Compute and print E[E_out]
-    std::cout << "E[E_out] = " << compute_mean(mse_terms.begin(), mse_terms.end()) << "\n";
+    // This is the expected value over all hypotheses
+    std::cout << "E[E_out] = " << compute_mean(E_E_out_mse_terms.begin(), E_E_out_mse_terms.end()) << "\n";
 
     return 0;
 }
-
